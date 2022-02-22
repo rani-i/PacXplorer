@@ -377,6 +377,7 @@ class MovkAnalyzer(object):
     GOOD_MOVK_COMMENT = 'This MOVK has PAC xrefs'
     BAD_STATICVTBL_MOVK_COMMENT = 'This MOVK has **NO** PAC xrefs (static vtable)'
     BAD_ERROR_MOVK_COMMENT = 'This MOVK has **NO** PAC xrefs (analysis error, please report!)'
+    BAD_MOVK_OFFSET = 'This MOVK has offset through multiple regs (analysis error, please report!)'
 
     def __init__(self, cache):
         self.cache = cache  # cache for analyzed data
@@ -523,7 +524,25 @@ class MovkAnalyzer(object):
                     ctx_reg = insn.Op2.reg
                 elif mnem == 'ADD':
                     ctx_reg = insn.Op2.reg
-                    offset += insn.Op3.value
+
+                    if insn.Op3.type == 0x8: # I guess it's 
+                        offset_reg = insn.Op3.reg
+                        temp_ea = insn.ea
+                        for tries in range(10):
+                            temp_insn, _ = idautils.DecodePrecedingInstruction(temp_ea)      
+                            if temp_insn is None:
+                                print(f"Error finding offset {hex(temp_ea)}")
+                                cls.add_comment(insn.ea, cls.BAD_MOVK_OFFSET)
+                                break                   
+                            if temp_insn is not None and temp_insn.get_canon_mnem() == "MOV" and temp_insn.Op1.reg == offset_reg:
+                                offset += temp_insn.Op2.value
+                                break
+                        else:
+                            print(f"Couldn't find temp_ea retired {hex(temp_ea)}")
+                            cls.add_comment(insn.ea, cls.BAD_MOVK_OFFSET)
+                    else:
+                        offset += insn.Op3.value
+            
                 else:
                     trace.append('ERROR BAD MODIFY')
                     #cls.add_comment(addr, cls.BAD_ERROR_MOVK_COMMENT)
@@ -847,10 +866,12 @@ class PacxplorerPlugin(idaapi.plugin_t, idaapi.UI_Hooks):
 
     def choose_xref_from_movk(self, ea):
         pac_tuple = self.movk_analyzer.pac_tuple_from_ea(ea)
+        print(f"pac_tuple={pac_tuple}")
         if not pac_tuple:
             return None
 
         raw_candidates = self.vtable_analyzer.func_from_pac_tuple(pac_tuple)
+        print(f"raw_candidates={raw_candidates}")
         # VtableXrefTuple = namedtuple('VtableXrefTuple', ['xref_to' , 'vtable_addr', 'vtable_entry_addr', 'offset', 'pac'])
         candidates = [ ["0x%016x" % x.xref_to, MovkXrefChooser.demangle(x.xref_to),
                         MovkXrefChooser.demangle(x.vtable_addr)] for x in raw_candidates ]

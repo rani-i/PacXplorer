@@ -475,6 +475,9 @@ class MovkAnalyzer(object):
         cur_func_start = cur_func.start_ea
 
         insn = idautils.DecodeInstruction(addr)
+        if insn is None:
+            print(f"Failed decode instruction at  {addr}")
+            return (None, None)
         mnem = insn.get_canon_mnem()
         if mnem != 'MOVK' or insn.Op2.specval != 48:
             return (None, None)
@@ -500,6 +503,9 @@ class MovkAnalyzer(object):
             visited.add(curr)
 
             insn = idautils.DecodeInstruction(curr)
+            if insn is None:
+                print(f"Error in {curr}")
+                continue
             mnem = insn.get_canon_mnem()
             line = idc.GetDisasm(insn.ea)
             line = line.split(';')[0]  # line comments get into the dissasembly
@@ -538,7 +544,7 @@ class MovkAnalyzer(object):
                                 offset += temp_insn.Op2.value
                                 break
                         else:
-                            print(f"Couldn't find temp_ea retired {hex(temp_ea)}")
+                            print(f"Couldn't find temp_ea exhausted {hex(temp_ea)}")
                             cls.add_comment(insn.ea, cls.BAD_MOVK_OFFSET)
                     else:
                         offset += insn.Op3.value
